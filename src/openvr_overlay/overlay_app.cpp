@@ -372,7 +372,8 @@ namespace FreeScuba {
                 {
                     switch (vrEvent.eventType) {
                     case vr::VREvent_MouseMove:
-                        io.AddMousePosEvent(vrEvent.data.mouse.x, vrEvent.data.mouse.y);
+                        // Invert the y-coordinate by subtracting it from the maximum y-value (assuming max height)
+                        io.AddMousePosEvent(vrEvent.data.mouse.x, g_windowHeight - vrEvent.data.mouse.y);
                         break;
                     case vr::VREvent_MouseButtonDown:
                         io.AddMouseButtonEvent((vrEvent.data.mouse.button & vr::VRMouseButton_Left) == vr::VRMouseButton_Left ? 0 : 1, true);
@@ -382,8 +383,8 @@ namespace FreeScuba {
                         break;
                     case vr::VREvent_ScrollDiscrete:
                     {
-                        const float x = vrEvent.data.scroll.xdelta * 360.0f * 8.0f;
-                        const float y = vrEvent.data.scroll.ydelta * 360.0f * 8.0f;
+                        const float x = vrEvent.data.scroll.xdelta;
+                        const float y = vrEvent.data.scroll.ydelta;
                         io.AddMouseWheelEvent(x, y);
                         break;
                     }

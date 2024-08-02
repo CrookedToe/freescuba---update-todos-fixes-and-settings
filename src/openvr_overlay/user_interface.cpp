@@ -28,8 +28,10 @@ void SetupImgui() {
     style.WindowRounding    = 0.0f;
 
     // Make buttons bigger so that they have a bigger hitbox in VR
-    style.FramePadding      = ImVec2(10, 6);
-    style.ItemSpacing       = ImVec2(10, 6);
+    style.FramePadding      = ImVec2(12, 8);
+    style.ItemSpacing       = ImVec2(12, 8);
+    style.TouchExtraPadding = ImVec2(8, 8);
+    style.ScaleAllSizes(1.5f);  // Increase all sizes by 50%
 
     // Rounding
     style.ChildRounding     = 6.0f;
@@ -39,18 +41,20 @@ void SetupImgui() {
 
     // Colours
     ImVec4* colors = ImGui::GetStyle().Colors;
-    colors[ImGuiCol_WindowBg]           = ImVec4(0.01f, 0.01f, 0.01f, 0.94f);
-    colors[ImGuiCol_Border]             = ImVec4(0.30f, 0.30f, 0.30f, 0.55f);
-    colors[ImGuiCol_FrameBg]            = ImVec4(0.24f, 0.26f, 0.27f, 0.54f);
-    colors[ImGuiCol_FrameBgHovered]     = ImVec4(0.26f, 0.26f, 0.26f, 0.40f);
-    colors[ImGuiCol_FrameBgActive]      = ImVec4(0.31f, 0.31f, 0.31f, 0.67f);
-    colors[ImGuiCol_SliderGrab]         = ImVec4(0.26f, 0.43f, 0.68f, 1.00f);
-    colors[ImGuiCol_SliderGrabActive]   = ImVec4(0.36f, 0.56f, 0.86f, 1.00f);
-    colors[ImGuiCol_Button]             = ImVec4(0.26f, 0.43f, 0.68f, 1.00f);
-    colors[ImGuiCol_ButtonHovered]      = ImVec4(0.29f, 0.52f, 0.85f, 1.00f);
-    colors[ImGuiCol_ButtonActive]       = ImVec4(0.21f, 0.33f, 0.52f, 1.00f);
+    colors[ImGuiCol_Text]                   = ImVec4(1.00f, 1.00f, 1.00f, 1.00f);
+    colors[ImGuiCol_TextDisabled]           = ImVec4(0.50f, 0.50f, 0.50f, 1.00f);
+    colors[ImGuiCol_WindowBg]               = ImVec4(0.06f, 0.06f, 0.06f, 0.94f);
+    colors[ImGuiCol_Border]                 = ImVec4(0.30f, 0.30f, 0.30f, 0.55f);
+    colors[ImGuiCol_FrameBg]                = ImVec4(0.24f, 0.26f, 0.27f, 0.54f);
+    colors[ImGuiCol_FrameBgHovered]         = ImVec4(0.26f, 0.26f, 0.26f, 0.40f);
+    colors[ImGuiCol_FrameBgActive]          = ImVec4(0.31f, 0.31f, 0.31f, 0.67f);
+    colors[ImGuiCol_SliderGrab]             = ImVec4(0.26f, 0.43f, 0.68f, 1.00f);
+    colors[ImGuiCol_SliderGrabActive]       = ImVec4(0.36f, 0.56f, 0.86f, 1.00f);
+    colors[ImGuiCol_Button]                 = ImVec4(0.26f, 0.43f, 0.68f, 1.00f);
+    colors[ImGuiCol_ButtonHovered]          = ImVec4(0.29f, 0.52f, 0.85f, 1.00f);
+    colors[ImGuiCol_ButtonActive]           = ImVec4(0.21f, 0.33f, 0.52f, 1.00f);
 
-    const float FONT_SIZE = 16.0f;
+    const float FONT_SIZE = 24.0f;
 
     fontRegular = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\segoeui.ttf",  FONT_SIZE); // Segoe UI
     fontBold    = io.Fonts->AddFontFromFileTTF("c:\\Windows\\Fonts\\segoeuib.ttf", FONT_SIZE); // Segoe UI Bold
@@ -340,6 +344,8 @@ void DrawGlove(const std::string name, const std::string id, protocol::ContactGl
                     state.uiState.page = ScreenState_t::ScreenStateCalibrateOffset;
                     state.uiState.calibrationState = CalibrationState_t::State_Entering;
                 }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Adjust the position and rotation offset of the glove");
 
                 ImGui::SameLine();
 
@@ -353,6 +359,8 @@ void DrawGlove(const std::string name, const std::string id, protocol::ContactGl
                     glove.calibration.poseOffset.rot.z = 0.0f;
                     glove.calibration.poseOffset.rot.w = 1.0f;
                 }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Reset the position and rotation offset of the glove");
 
                 ImGui::EndDisabled();
 

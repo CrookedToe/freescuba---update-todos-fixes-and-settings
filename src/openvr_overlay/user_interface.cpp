@@ -17,8 +17,6 @@ ImFont* fontRegular = nullptr;
 #define CLAMP(t,a,b) (MAX(MIN(t, b), a))
 
 void SetupImgui() {
-    // @TODO: ImGui style here
-
     ImGuiIO& io = ImGui::GetIO();
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
     io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;

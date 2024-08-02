@@ -77,37 +77,50 @@ void ActivateMultipleDrivers()
     }
 }
 
-// @TODO: Return an enum instead of throwing an exception
-void InitVR()
+enum class VRInitResult {
+    Success,
+    OpenVRInitError,
+    OutdatedIVRSystemVersion,
+    OutdatedIVRSettingsVersion,
+    OutdatedIVROverlayVersion
+};
+
+VRInitResult InitVR()
 {
     vr::EVRInitError initError = vr::VRInitError_None;
     vr::VR_Init(&initError, vr::VRApplication_Other);
     if (initError != vr::VRInitError_None)
     {
-        const char* error = vr::VR_GetVRInitErrorAsEnglishDescription(initError);
-        throw std::runtime_error("OpenVR error:" + std::string( error ));
+        return VRInitResult::OpenVRInitError;
     }
 
     if (!vr::VR_IsInterfaceVersionValid(vr::IVRSystem_Version))
     {
-        throw std::runtime_error("OpenVR error: Outdated IVRSystem_Version");
+        return VRInitResult::OutdatedIVRSystemVersion;
     }
     else if (!vr::VR_IsInterfaceVersionValid(vr::IVRSettings_Version))
     {
-        throw std::runtime_error("OpenVR error: Outdated IVRSettings_Version");
+        return VRInitResult::OutdatedIVRSettingsVersion;
     }
     else if (!vr::VR_IsInterfaceVersionValid(vr::IVROverlay_Version))
     {
-        throw std::runtime_error("OpenVR error: Outdated IVROverlay_Version");
+        return VRInitResult::OutdatedIVROverlayVersion;
     }
 
     ActivateMultipleDrivers();
+    return VRInitResult::Success;
 }
 
-// @FIXME: Return a status enum
-void TryCreateVrOverlay(AppState& state) {
+enum class OverlayCreationStatus {
+    Success,
+    AlreadyExists,
+    CreationError,
+    IconError
+};
+
+OverlayCreationStatus TryCreateVrOverlay(AppState& state) {
     if (s_overlayMainHandle || !vr::VROverlay()) {
-        return;
+        return OverlayCreationStatus::AlreadyExists;
     }
 
     vr::VROverlayError err = vr::VROverlay()->CreateDashboardOverlay(
@@ -115,10 +128,8 @@ void TryCreateVrOverlay(AppState& state) {
         &s_overlayMainHandle, &s_overlayThumbnailHandle
     );
 
-    if (err == vr::VROverlayError_KeyInUse) {
-        throw std::runtime_error("Another instance of FreeScuba is already running!");
-    } else if (err != vr::VROverlayError_None) {
-        throw std::runtime_error("Failed to create SteamVR Overlay with error " + std::string(vr::VROverlay()->GetOverlayErrorNameFromEnum(err)));
+    if (err != vr::VROverlayError_None) {
+        return OverlayCreationStatus::CreationError;
     }
 
     vr::VROverlay()->SetOverlayWidthInMeters(s_overlayMainHandle, 3.0f);
@@ -126,16 +137,17 @@ void TryCreateVrOverlay(AppState& state) {
     vr::VROverlay()->SetOverlayFlag(s_overlayMainHandle, vr::VROverlayFlags_SendVRDiscreteScrollEvents, true);
 
     std::string executableDir = GetExecutableDirectory();
-
-    // @TODO: Icon
     std::string iconPath = executableDir + "\\icon_1k.png";
-    vr::VROverlay()->SetOverlayFromFile(s_overlayThumbnailHandle, iconPath.c_str());
+    if (vr::VROverlay()->SetOverlayFromFile(s_overlayThumbnailHandle, iconPath.c_str()) != vr::VROverlayError_None) {
+        return OverlayCreationStatus::IconError;
+    }
 
-    // Try registering the overlay with SteamVR
     vr::VRApplications()->AddApplicationManifest((executableDir + "\\manifest.vrmanifest").c_str(), false);
     if (!vr::VRApplications()->GetApplicationAutoLaunch(OPENVR_APPLICATION_KEY)) {
         vr::VRApplications()->SetApplicationAutoLaunch(OPENVR_APPLICATION_KEY, state.doAutoLaunch);
     }
+
+    return OverlayCreationStatus::Success;
 }
 
 int main() {
@@ -155,11 +167,50 @@ int main() {
         static std::chrono::steady_clock::time_point gloveRightConnected = std::chrono::steady_clock::time_point::min();
 
         // Init SteamVR
-        InitVR();
+        VRInitResult vrInitResult = InitVR();
+        if (vrInitResult != VRInitResult::Success) {
+            std::string errorMessage;
+            switch (vrInitResult) {
+                case VRInitResult::OpenVRInitError:
+                    errorMessage = "OpenVR error: " + std::string(vr::VR_GetVRInitErrorAsEnglishDescription(vr::VRInitError_Unknown));
+                    break;
+                case VRInitResult::OutdatedIVRSystemVersion:
+                    errorMessage = "OpenVR error: Outdated IVRSystem_Version";
+                    break;
+                case VRInitResult::OutdatedIVRSettingsVersion:
+                    errorMessage = "OpenVR error: Outdated IVRSettings_Version";
+                    break;
+                case VRInitResult::OutdatedIVROverlayVersion:
+                    errorMessage = "OpenVR error: Outdated IVROverlay_Version";
+                    break;
+            }
+            throw std::runtime_error(errorMessage);
+        }
 
         // Setup IPC
         IPCClient ipcClient;
-        ipcClient.Connect();
+        ConnectResult connectResult = ipcClient.Connect();
+        if (connectResult != ConnectResult::Success) {
+            std::string errorMessage;
+            switch (connectResult) {
+                case ConnectResult::PipeOpenError:
+                    errorMessage = "Failed to open pipe";
+                    break;
+                case ConnectResult::PipeTimeout:
+                    errorMessage = "Pipe timeout";
+                    break;
+                case ConnectResult::SetPipeModeError:
+                    errorMessage = "Failed to set pipe mode";
+                    break;
+                case ConnectResult::HandshakeError:
+                    errorMessage = "Handshake error";
+                    break;
+                case ConnectResult::VersionMismatch:
+                    errorMessage = "Version mismatch";
+                    break;
+            }
+            throw std::runtime_error(errorMessage);
+        }
         state.ipcClient = &ipcClient;
 
         // Serial data listener
@@ -247,7 +298,17 @@ int main() {
         if (FreeScuba::Overlay::StartWindow()) {
             bool doExecute = true;
             while (doExecute) {
-                TryCreateVrOverlay(state);
+                OverlayCreationStatus overlayStatus = TryCreateVrOverlay(state);
+                switch (overlayStatus) {
+                    case OverlayCreationStatus::Success:
+                        break;
+                    case OverlayCreationStatus::AlreadyExists:
+                        break;
+                    case OverlayCreationStatus::CreationError:
+                        throw std::runtime_error("Failed to create SteamVR Overlay");
+                    case OverlayCreationStatus::IconError:
+                        throw std::runtime_error("Failed to set SteamVR Overlay icon");
+                }
 
                 state.dongleAvailable = man.IsConnected();
                 ProcessGlove(state.gloveLeft, state.uiState.leftGloveBatteryBuffer, gloveLeftConnected);
@@ -351,23 +412,30 @@ void ProcessGlove(protocol::ContactGloveState_t& glove, MostCommonElementRingBuf
 
         // Apply finger calibration to raw finger data
 
-        // Helper macro because 80% of the code is copy paste par joint names
-        // Remaps such that rest is 0.0, and close is +1.0, and prevents values > 1.0 being output
-#define APPLY_FINGER_CALIBRATION(joint, structNesting) \
-        glove.joint = Clamp((glove.joint##Raw - glove.calibration.fingers.structNesting.rest) / (float) (glove.calibration.fingers.structNesting.close - glove.calibration.fingers.structNesting.rest), -1.0f, 1.0f)
+        // Helper macro for lower knuckles (roots)
+        // Clamps negative values (back bending) to -0.2
+#define APPLY_FINGER_CALIBRATION_ROOT(joint, structNesting) \
+    glove.joint = Clamp((glove.joint##Raw - glove.calibration.fingers.structNesting.rest) / (float) (glove.calibration.fingers.structNesting.close - glove.calibration.fingers.structNesting.rest), -0.2f, 1.0f)
 
-        APPLY_FINGER_CALIBRATION(thumbRoot,     thumb.proximal);
-        APPLY_FINGER_CALIBRATION(thumbTip,      thumb.distal);
-        APPLY_FINGER_CALIBRATION(indexRoot,     index.proximal);
-        APPLY_FINGER_CALIBRATION(indexTip,      index.distal);
-        APPLY_FINGER_CALIBRATION(middleRoot,    middle.proximal);
-        APPLY_FINGER_CALIBRATION(middleTip,     middle.distal);
-        APPLY_FINGER_CALIBRATION(ringRoot,      ring.proximal);
-        APPLY_FINGER_CALIBRATION(ringTip,       ring.distal);
-        APPLY_FINGER_CALIBRATION(pinkyRoot,     pinky.proximal);
-        APPLY_FINGER_CALIBRATION(pinkyTip,      pinky.distal);
+        // Helper macro for higher knuckles (tips)
+        // Clamps negative values (back bending) to -0.1
+#define APPLY_FINGER_CALIBRATION_TIP(joint, structNesting) \
+    glove.joint = Clamp((glove.joint##Raw - glove.calibration.fingers.structNesting.rest) / (float) (glove.calibration.fingers.structNesting.close - glove.calibration.fingers.structNesting.rest), -0.1f, 1.0f)
 
-#undef APPLY_FINGER_CALIBRATION
+        // Apply calibration with different clamping for roots and tips
+        APPLY_FINGER_CALIBRATION_ROOT(thumbRoot,  thumb.proximal);
+        APPLY_FINGER_CALIBRATION_TIP(thumbTip,    thumb.distal);
+        APPLY_FINGER_CALIBRATION_ROOT(indexRoot,  index.proximal);
+        APPLY_FINGER_CALIBRATION_TIP(indexTip,    index.distal);
+        APPLY_FINGER_CALIBRATION_ROOT(middleRoot, middle.proximal);
+        APPLY_FINGER_CALIBRATION_TIP(middleTip,   middle.distal);
+        APPLY_FINGER_CALIBRATION_ROOT(ringRoot,   ring.proximal);
+        APPLY_FINGER_CALIBRATION_TIP(ringTip,     ring.distal);
+        APPLY_FINGER_CALIBRATION_ROOT(pinkyRoot,  pinky.proximal);
+        APPLY_FINGER_CALIBRATION_TIP(pinkyTip,    pinky.distal);
+
+#undef APPLY_FINGER_CALIBRATION_ROOT
+#undef APPLY_FINGER_CALIBRATION_TIP
 
     } else {
         glove.gloveBattery = CONTACT_GLOVE_INVALID_BATTERY;

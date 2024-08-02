@@ -4,6 +4,8 @@
 
 #include <algorithm>
 #include <dwmapi.h>
+#include <thread>
+#include <bitset>
 
 // Forward declare message handler from imgui_impl_win32.cpp
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -132,12 +134,24 @@ namespace FreeScuba {
 
             SetupImgui();
 
-            // Lock the main thread to the current core
-            uint32_t desiredLogicalCore = 1; // @TODO: Change so that we can lock the thread onto a CPU core dynamically after querying system information
-            // This is a bit mask where each bit corresponds to a logical core on the current system. We want to pin this thread onto a single core so that timings info is consistent
-            // Set the bit at 'desiredLogicalCore' to 1
+            // Dynamically select a CPU core for thread affinity
+            unsigned int numCores = std::thread::hardware_concurrency();
+            uint32_t desiredLogicalCore = 0;
+
+            if (numCores > 1) {
+                // Use the last core if more than one is available
+                desiredLogicalCore = numCores - 1;
+            }
+
+            // Set thread affinity
             uint64_t threadAffinityMask = 1ULL << desiredLogicalCore;
-            SetThreadAffinityMask(GetCurrentThread(), threadAffinityMask);
+            
+            // Fallback mechanism if setting affinity fails
+            if (SetThreadAffinityMask(GetCurrentThread(), threadAffinityMask) == 0) {
+                // If setting affinity failed, try setting affinity to any available core
+                threadAffinityMask = (1ULL << numCores) - 1;
+                SetThreadAffinityMask(GetCurrentThread(), threadAffinityMask);
+            }
 
             s_lastFrameStartTime = GetSystemTimeSeconds();
 
@@ -276,6 +290,11 @@ namespace FreeScuba {
             }
             return ::DefWindowProcW(hWnd, msg, wParam, lParam);
         }
+
+        enum class VSyncMode {
+            Enabled,
+            Disabled
+        };
 
         const bool UpdateNativeWindow(AppState& state, const vr::VROverlayHandle_t overlayMainHandle) {
 
@@ -417,9 +436,16 @@ namespace FreeScuba {
 
                 // Only present if the window is visible
                 if (g_windowWidth != 0 && g_windowHeight != 0) {
-                    // @TODO: Change VSync mode into an enum
-                    g_pSwapChain->Present(1, 0); // Present with vsync
-                    //g_pSwapChain->Present(0, 0); // Present without vsync
+                    VSyncMode vsyncMode = VSyncMode::Enabled; // You can change this based on user preferences or app state
+                    
+                    switch (vsyncMode) {
+                        case VSyncMode::Enabled:
+                            g_pSwapChain->Present(1, 0); // Present with vsync
+                            break;
+                        case VSyncMode::Disabled:
+                            g_pSwapChain->Present(0, 0); // Present without vsync
+                            break;
+                    }
                 }
 
                 // Only present to SteamVR if the overlay is open

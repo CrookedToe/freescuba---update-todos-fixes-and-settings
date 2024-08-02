@@ -1,5 +1,6 @@
 #include "serial_communication.hpp"
 #include <SetupAPI.h>
+#include <string>
 
 #include <chrono>
 #include "cobs.hpp"
@@ -8,18 +9,21 @@
 static const std::string c_serialDeviceId = "VID_10C4&PID_7B27";
 static const uint32_t LISTENER_WAIT_TIME = 1000;
 
-static void PrintBuffer(const std::string name, const uint8_t* buffer, const size_t size) {
-    // @FIXME: Can we make this neater using printf?
-    std::cout << "uint8_t " << name << "[" << std::dec << size << "] = { " << std::flush;
-
+static void PrintBuffer(const std::string& name, const uint8_t* buffer, const size_t size) {
+    printf("uint8_t %s[%zu] = { ", name.c_str(), size);
+    
     for (size_t i = 0; i < size; i++) {
-        std::cout << "0x" << std::uppercase << std::hex << std::setfill('0') << std::setw(2) << (((int)buffer[i]) & 0xFF) << std::flush;
-        if (i != size - 1) {
-            std::cout << ", " << std::flush;
+        printf("0x%02X", buffer[i]);
+        if (i < size - 1) {
+            printf(", ");
         }
     }
+    
+    printf(" };\n");
+}
 
-    std::cout << " };" << std::endl;
+bool startsWith(const char* str, const char* prefix, size_t prefixLen) {
+    return strncmp(str, prefix, prefixLen) == 0;
 }
 
 int SerialCommunicationManager::GetComPort() const {
@@ -72,21 +76,15 @@ int SerialCommunicationManager::GetComPort() const {
                 DWORD dwType            = 0;
 
                 if (
-                    ( RegQueryValueExA(hDeviceRegistryKey, "PortName", NULL, &dwType, (LPBYTE)pszPortName, &dwSize) == ERROR_SUCCESS ) &&
-                    ( dwType == REG_SZ ) )
+                    (RegQueryValueExA(hDeviceRegistryKey, "PortName", NULL, &dwType, (LPBYTE)pszPortName, &dwSize) == ERROR_SUCCESS) &&
+                    (dwType == REG_SZ)
+                )
                 {
-                    // @FIXME: Avoid allocating memory by using a std::string
-                    //         Should we consider implementing a substr function which takes in a char* ?
-                    std::string sPortName = pszPortName;
-                    try {
-                        if ( sPortName.substr( 0, 3 ) == "COM" ) {
-                            int nPortNr = std::stoi( pszPortName + 3 );
-                            if ( nPortNr != 0 ) {
-                                return nPortNr;
-                            }
+                    if (startsWith(pszPortName, "COM", 3)) {
+                        int nPortNr = atoi(pszPortName + 3);
+                        if (nPortNr != 0) {
+                            return nPortNr;
                         }
-                    } catch ( ... ) {
-                        printf("Parsing failed for a port\n");
                     }
                 }
                 RegCloseKey(hDeviceRegistryKey);

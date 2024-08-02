@@ -5,11 +5,13 @@
 constexpr uint8_t RING_BUFFER_VALUE_RANGE = 255;
 
 MostCommonElementRingBuffer::MostCommonElementRingBuffer()
-	: m_elements(nullptr), m_counter(nullptr), m_size(0), m_write(0), m_occupiedSize(0) {}
+	: m_elements(nullptr), m_counter(nullptr), m_size(0), m_write(0), m_occupiedSize(0),
+      m_mostCommonElement(0), m_mostCommonElementCount(0) {}
 
 
 MostCommonElementRingBuffer::MostCommonElementRingBuffer(const uint32_t size)
-	: m_elements(nullptr), m_counter(nullptr), m_size(size), m_write(0), m_occupiedSize(0)
+	: m_elements(nullptr), m_counter(nullptr), m_size(size), m_write(0), m_occupiedSize(0),
+      m_mostCommonElement(0), m_mostCommonElementCount(0)
 {
 	m_elements = static_cast<uint8_t*>(malloc(size * sizeof(uint8_t)));
 	if (m_elements != nullptr) {
@@ -28,6 +30,8 @@ void MostCommonElementRingBuffer::Init(const uint32_t size)
 	m_size			= size;
 	m_write			= 0;
 	m_occupiedSize	= 0;
+	m_mostCommonElement = 0;
+	m_mostCommonElementCount = 0;
 	
 	m_elements = static_cast<uint8_t*>(malloc(size * sizeof(uint8_t)));
 
@@ -59,49 +63,63 @@ void MostCommonElementRingBuffer::Reset() {
 		if (m_counter != nullptr) {
 			memset(m_counter, 0, RING_BUFFER_VALUE_RANGE * sizeof(uint32_t));
 		}
+		m_mostCommonElement = 0;
+		m_mostCommonElementCount = 0;
 	}
 }
 
 void MostCommonElementRingBuffer::Push(const uint8_t value) {
-	if (m_elements != nullptr && m_counter != nullptr) {
+    if (m_elements != nullptr && m_counter != nullptr) {
+        uint8_t oldValue = 0;
+        bool needsRecalculation = false;
 
-		// Increase the occupied size until we fill the buffer
-		if (m_occupiedSize < m_size) {
-			m_occupiedSize++;
-		} else {
-			// buffer is full, handle overwriting
-			uint8_t oldValue = m_elements[m_write];
-			// Decrease last value
-			m_counter[oldValue]--;
-		}
+        // Increase the occupied size until we fill the buffer
+        if (m_occupiedSize < m_size) {
+            m_occupiedSize++;
+        } else {
+            // buffer is full, handle overwriting
+            oldValue = m_elements[m_write];
+            // Decrease last value
+            m_counter[oldValue]--;
 
-		// Write element, increment counter, update the write pointer
-		m_elements[m_write] = value;
-		m_counter[value]++;
-		m_write = (m_write + 1) % m_size;
-	}
+            // Check if we're removing an instance of the most common element
+            if (oldValue == m_mostCommonElement) {
+                m_mostCommonElementCount--;
+                if (m_mostCommonElementCount == 0) {
+                    needsRecalculation = true;
+                }
+            }
+        }
+
+        // Write element, increment counter, update the write pointer
+        m_elements[m_write] = value;
+        m_counter[value]++;
+        m_write = (m_write + 1) % m_size;
+
+        // Update most common element tracking
+        if (value == m_mostCommonElement) {
+            m_mostCommonElementCount++;
+        } else if (m_counter[value] > m_mostCommonElementCount) {
+            m_mostCommonElement = value;
+            m_mostCommonElementCount = m_counter[value];
+        } else if (needsRecalculation) {
+            RecalculateMostCommonElement();
+        }
+    }
 }
 
 const uint8_t MostCommonElementRingBuffer::MostCommonElement() const {
-	if (m_elements != nullptr && m_counter != nullptr) {
-
-		uint32_t max_count = 0;
-		uint8_t max_value = 0;
-
-		// Go through the counter list and find the largest value
-		for (int i = 0; i < RING_BUFFER_VALUE_RANGE; i++) {
-			if (m_counter[i] > max_count) {
-				max_count = m_counter[i];
-				max_value = i;
-			}
-		}
-
-		return max_value;
-	} else {
-		return 0xFF; // INVALID VALUE
-	}
+    return (m_elements != nullptr && m_counter != nullptr) ? m_mostCommonElement : 0xFF;
 }
 
-// @TODO: You can probably implement this in such a way that we only search the loop whenever we update a value
-//        simply by checking if the new value is larger or smaller than the last value. We would also have to keep track
-//        of how many instances of the most common number are in the list internally and search if it's smaller
+void MostCommonElementRingBuffer::RecalculateMostCommonElement() {
+    m_mostCommonElementCount = 0;
+    m_mostCommonElement = 0;
+
+    for (int i = 0; i < RING_BUFFER_VALUE_RANGE; i++) {
+        if (m_counter[i] > m_mostCommonElementCount) {
+            m_mostCommonElementCount = m_counter[i];
+            m_mostCommonElement = i;
+        }
+    }
+}

@@ -63,7 +63,7 @@ vr::EVRInitError ContactGloveDevice::Activate(uint32_t unObjectId)
         m_isLeft ? "/input/skeleton/left" : "/input/skeleton/right",
         m_isLeft ? "/skeleton/hand/left" : "/skeleton/hand/right",
         "/pose/raw",
-        vr::EVRSkeletalTrackingLevel::VRSkeletalTracking_Full,
+        vr::EVRSkeletalTrackingLevel::VRSkeletalTracking_Partial, // I have found setting this to partial works better for vrchat as you dont have to use their hand tracking movement and such. ymmv
         nullptr,
         0U,
         &m_skeletalComponentHandle);

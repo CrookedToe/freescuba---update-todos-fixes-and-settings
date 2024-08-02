@@ -29,57 +29,53 @@ IPCClient::~IPCClient()
 	}
 }
 
-// @TODO: Make exceptionless
-void IPCClient::Connect()
+ConnectResult IPCClient::Connect()
 {
-	// Connect to pipe job
-	while ( true ) {
+    // Connect to pipe job
+    while (true) {
+        LPTSTR pipeName = (LPTSTR)TEXT(FREESCUBA_PIPE_NAME);
+        pipe = CreateFile(
+            pipeName,   // pipe name 
+            GENERIC_READ | GENERIC_WRITE,
+            0,              // no sharing 
+            NULL,           // default security attributes
+            OPEN_EXISTING,  // opens existing pipe 
+            0,              // default attributes 
+            NULL);          // no template file 
 
-		LPTSTR pipeName = ( LPTSTR ) TEXT ( FREESCUBA_PIPE_NAME );
-		pipe = CreateFile (
-			pipeName,   // pipe name 
-			GENERIC_READ |  // read and write access 
-			GENERIC_WRITE,
-			0,              // no sharing 
-			NULL,           // default security attributes
-			OPEN_EXISTING,  // opens existing pipe 
-			0,              // default attributes 
-			NULL );         // no template file 
+        // Break if the pipe handle is valid. 
+        if (pipe != INVALID_HANDLE_VALUE) {
+            break;
+        }
 
-		// Break if the pipe handle is valid. 
-		if ( pipe != INVALID_HANDLE_VALUE ) {
-			break;
-		}
+        // Exit if an error other than ERROR_PIPE_BUSY occurs. 
+        if (GetLastError() != ERROR_PIPE_BUSY) {
+            return ConnectResult::PipeOpenError;
+        }
 
-		// Exit if an error other than ERROR_PIPE_BUSY occurs. 
-		if ( GetLastError() != ERROR_PIPE_BUSY ) {
-			throw std::runtime_error(std::string("Could not open pipe. Got error ") + std::to_string(GetLastError()));
-		}
+        // All pipe instances are busy, so wait for 20 seconds. 
+        if (!WaitNamedPipe(pipeName, 20000)) {
+            return ConnectResult::PipeTimeout;
+        }
+    }
 
-		// All pipe instances are busy, so wait for 20 seconds. 
-		if ( !WaitNamedPipe( pipeName, 20000 ) ) {
-			throw std::runtime_error("Could not open pipe: 20 second wait timed out.");
-		}
-	}
+    DWORD mode = PIPE_READMODE_MESSAGE;
+    if (!SetNamedPipeHandleState(pipe, &mode, 0, 0)) {
+        return ConnectResult::SetPipeModeError;
+    }
 
+    protocol::Response_t response;
+    try {
+        response = SendBlocking(protocol::Request_t(protocol::RequestHandshake));
+    } catch (...) {
+        return ConnectResult::HandshakeError;
+    }
 
-	DWORD mode = PIPE_READMODE_MESSAGE;
-	if ( !SetNamedPipeHandleState( pipe, &mode, 0, 0 ) ) {
-		const DWORD lastError = GetLastError();
-		throw std::runtime_error("Couldn't set pipe mode. Error " + std::to_string( lastError ) + ": " + LastErrorString( lastError ));
-	}
+    if (response.type != protocol::ResponseHandshake || response.protocol.version != protocol::Version) {
+        return ConnectResult::VersionMismatch;
+    }
 
-	const protocol::Response_t response = SendBlocking( protocol::Request_t( protocol::RequestHandshake ) );
-	if ( response.type != protocol::ResponseHandshake || response.protocol.version != protocol::Version )
-	{
-		throw std::runtime_error(
-			"Incorrect driver version installed, try reinstalling FreeScuba. (Client: " +
-			std::to_string( protocol::Version ) +
-			", Driver: " +
-			std::to_string( response.protocol.version ) +
-			")"
-		);
-	}
+    return ConnectResult::Success;
 }
 
 protocol::Response_t IPCClient::SendBlocking( const protocol::Request_t& request ) const

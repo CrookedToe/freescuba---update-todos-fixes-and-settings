@@ -413,14 +413,20 @@ void ProcessGlove(protocol::ContactGloveState_t& glove, MostCommonElementRingBuf
         // Apply finger calibration to raw finger data
 
         // Helper macro for lower knuckles (roots)
-        // Clamps negative values (back bending) to -0.2
+        // Clamps negative values (back bending) to -1 and multiplies by 0.3
 #define APPLY_FINGER_CALIBRATION_ROOT(joint, structNesting) \
-    glove.joint = Clamp((glove.joint##Raw - glove.calibration.fingers.structNesting.rest) / (float) (glove.calibration.fingers.structNesting.close - glove.calibration.fingers.structNesting.rest), -0.2f, 1.0f)
+    { \
+        float rawValue = (glove.joint##Raw - glove.calibration.fingers.structNesting.rest) / (float) (glove.calibration.fingers.structNesting.close - glove.calibration.fingers.structNesting.rest); \
+        glove.joint = rawValue > 0 ? Clamp(rawValue, 0.0f, 1.0f) : Clamp(rawValue * 0.3f, -1.0f, 0.0f); \
+    }
 
         // Helper macro for higher knuckles (tips)
-        // Clamps negative values (back bending) to -0.1
+        // Clamps negative values (back bending) to -1 and multiplies by 0.15
 #define APPLY_FINGER_CALIBRATION_TIP(joint, structNesting) \
-    glove.joint = Clamp((glove.joint##Raw - glove.calibration.fingers.structNesting.rest) / (float) (glove.calibration.fingers.structNesting.close - glove.calibration.fingers.structNesting.rest), -0.1f, 1.0f)
+    { \
+        float rawValue = (glove.joint##Raw - glove.calibration.fingers.structNesting.rest) / (float) (glove.calibration.fingers.structNesting.close - glove.calibration.fingers.structNesting.rest); \
+        glove.joint = rawValue > 0 ? Clamp(rawValue, 0.0f, 1.0f) : Clamp(rawValue * 0.15f, -1.0f, 0.0f); \
+    }
 
         // Apply calibration with different clamping for roots and tips
         APPLY_FINGER_CALIBRATION_ROOT(thumbRoot,  thumb.proximal);

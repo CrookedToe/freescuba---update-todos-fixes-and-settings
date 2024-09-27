@@ -99,7 +99,7 @@ foreach(SOURCE IN ITEMS ${SOURCES_API})
     source_group("${GROUP_PATH}" FILES "${SOURCE}")
 endforeach()
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY $<1:${CMAKE_BINARY_DIR}/${DRIVER_NAME}/bin/${ARCH_TARGET}>)
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/${DRIVER_NAME}/bin/${ARCH_TARGET})
 
 add_definitions(-D_UNICODE)
 add_library(FreeScubaDriver SHARED ${SOURCES_API} ${SOURCES_HEADERS})
@@ -129,3 +129,30 @@ add_custom_command(
     ${CMAKE_SOURCE_DIR}/${DRIVER_NAME}
     ${CMAKE_BINARY_DIR}/${DRIVER_NAME}
 )
+
+# Define destination and source directories for the driver
+if(WIN32)
+    # Path to the SteamVR drivers directory
+    set(STEAMVR_DRIVERS_DIR "C:/Program Files (x86)/Steam/steamapps/common/SteamVR/drivers")
+    
+    # Name of your driver
+    set(DRIVER_NAME "driver_freescuba")
+    
+    # Full path to the destination driver folder in SteamVR
+    set(DEST_DRIVER_DIR "${STEAMVR_DRIVERS_DIR}/${DRIVER_NAME}")
+    
+    # Full path to the built driver folder
+    set(SOURCE_DRIVER_DIR "${CMAKE_BINARY_DIR}/${DRIVER_NAME}")
+    
+    # Post-build commands
+    add_custom_command(TARGET FreeScubaDriver POST_BUILD
+        # Remove the existing driver folder if it exists
+        COMMAND ${CMAKE_COMMAND} -E remove_directory "${DEST_DRIVER_DIR}"
+        
+        # Copy the newly built driver to the SteamVR drivers directory
+        COMMAND ${CMAKE_COMMAND} -E copy_directory "${SOURCE_DRIVER_DIR}" "${DEST_DRIVER_DIR}"
+        
+        # Optional: Print a message to indicate completion
+        COMMAND ${CMAKE_COMMAND} -E echo "Driver copied to SteamVR drivers directory."
+    )
+endif()
